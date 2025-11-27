@@ -46,7 +46,7 @@ Section Invariants.
                               root node pointer *).
   Variable arg3 : N        (* tfind: 3rd pointer arg (R_X2)
                               address of subroutine*).
-  Variable x20 x21 : N     (* tolower: R_X20, R_X21 (callee-save regs) *).
+  Variable x20 x21 : N     (* R_X20, R_X21 (callee-save regs) *).
 
   Definition mem' fbytes := setmem 64 LittleE 40 mem (sp ⊖ 48) fbytes.
 
@@ -64,12 +64,15 @@ Section Invariants.
       )
 
     (* loop invariant *)
-    | 0x100020 => Inv 1 (
+    | 0x100020 => Inv 1 (∃ fb k,
+      s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
+      s R_X19 = arg2 ⊕ k /\ s R_X20 = arg1 ⊕ k 
       )
 
-    (* case-equal, non-null characters found *)
-    | 0x100034 => Inv 1 (
-    
+    (* case-equal, non-null characters found (successful find)*)
+    | 0x100034 => Inv 1 (∃ fb k,
+      s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
+      s R_X19 = arg2 ⊕ k /\ s R_X20 = arg1 ⊕ k
       )
 
     (* tfind return site *)
@@ -78,3 +81,20 @@ Section Invariants.
     | _ => NoInv
     end.
 
+  Definition invs1 := make_invs 1 tfind_lo_tfind_armv8 invs.
+  Definition exits1 := make_exits 1 tfind_lo_tfind_armv8 invs.
+  
+End Invariants.
+
+Search "invs".
+    
+Theorem tfind_partial_correctness:
+  forall s sp mem t s' x' arg1 arg2 arg3 a'
+         (ENTRY: startof t (x',s') = (Addr 0x100000, s))
+         (MDL: models arm8typctx s)
+         (SP: s R_SP = sp) (MEM: s V_MEM64 = mem) (X30: s R_X30 = a')
+         (RX0: s R_X0 = arg1) (RX1: s R_X1 = arg2) (RX2: s R_X2 = arg3),
+          satisfies_all tfind_lo_tfind_armv8 
+                           (invs1  sp mem a' arg1 arg2 (s R_X20) (s R_X21))
+                           (exits1 sp mem a' arg1 arg2 (s R_X20) (s R_X21)) ((x',s')::t).
+Proof.
