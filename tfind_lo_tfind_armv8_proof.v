@@ -66,13 +66,13 @@ Section Invariants.
     (* loop invariant *)
     | 0x100020 => Inv 1 (∃ fb k,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      s R_X19 = arg2 ⊕ k /\ s R_X20 = arg1 ⊕ k 
+      s R_X19 = arg2 ⊕ k /\ s R_X20 = arg1 ⊕ k /\ s R_X21 = arg3 ⊕ k
       )
 
     (* case-equal, non-null characters found (successful find)*)
     | 0x100034 => Inv 1 (∃ fb k,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      s R_X19 = arg2 ⊕ k /\ s R_X20 = arg1 ⊕ k
+      s R_X19 = arg2 ⊕ k /\ s R_X20 = arg1 ⊕ k /\ s R_X21 = arg3 ⊕ k
       )
 
     (* tfind return site *)
@@ -86,8 +86,11 @@ Section Invariants.
   
 End Invariants.
 
-Search "invs".
-    
+Search "satisfies_all".
+
+(* Create a step tactic that prints a progress message (for demos). *)
+Ltac step := time arm8_step.
+
 Theorem tfind_partial_correctness:
   forall s sp mem t s' x' arg1 arg2 arg3 a'
          (ENTRY: startof t (x',s') = (Addr 0x100000, s))
@@ -95,6 +98,11 @@ Theorem tfind_partial_correctness:
          (SP: s R_SP = sp) (MEM: s V_MEM64 = mem) (X30: s R_X30 = a')
          (RX0: s R_X0 = arg1) (RX1: s R_X1 = arg2) (RX2: s R_X2 = arg3),
           satisfies_all tfind_lo_tfind_armv8 
-                           (invs1  sp mem a' arg1 arg2 (s R_X20) (s R_X21))
-                           (exits1 sp mem a' arg1 arg2 (s R_X20) (s R_X21)) ((x',s')::t).
+                           (invs1  sp mem a' arg1 arg2)
+                           (exits1 sp mem a' arg1 arg2) ((x',s')::t).
 Proof.
+  (* Use prove_invs to initiate a proof by induction. *)
+  intros. apply prove_invs.
+  (* Base case: The invariant at the subroutine entry point is satisfied. *)
+  simpl. rewrite ENTRY. step. repeat split. assumption. assumption. assumption.
+Qed.
