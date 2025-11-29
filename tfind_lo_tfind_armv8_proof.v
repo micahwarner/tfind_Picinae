@@ -79,6 +79,32 @@ Section Invariants.
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
       s R_X19 = arg2 ⊕ k /\ s R_X20 = arg1 ⊕ k /\ s R_X21 = arg3 ⊕ k
       )
+      
+    (* 0x100048: Just before the "not found" path completes; stack frame and saved registers intact. *)
+    | 0x100048 => Inv 1 (∃ fb k,
+      s R_SP = sp ⊖ 48 /\
+      s V_MEM64 = mem' fb /\
+      s R_X20 = arg1 ⊕ k /\
+      s R_X21 = arg3 ⊕ k
+    )
+
+  (* 0x10004c: After executing `mov x19,#0` (or arriving from cbz), x19 holds the final result value. *)
+  | 0x10004c => Inv 1 (∃ n k fb,
+      s R_SP = sp ⊖ 48 /\
+      s V_MEM64 = mem' fb /\
+      s R_X19 = n /\             (* result in x19 (or 0 if not found) *)
+      s R_X20 = arg1 ⊕ k /\
+      s R_X21 = arg3 ⊕ k
+    )
+
+  (* 0x100050: After `mov x0,x19`, the function result is now placed in x0 for return. *)
+  | 0x100050 => Inv 1 (∃ n k fb,
+      s R_SP = sp ⊖ 48 /\
+      s V_MEM64 = mem' fb /\
+      s R_X0 = n /\ s R_X19 = n /\
+      s R_X20 = arg1 ⊕ k /\
+      s R_X21 = arg3 ⊕ k
+    )
 
     (* tfind return site *)
     | 0x10005c => Post 1 (postcondition s)
@@ -122,9 +148,14 @@ Proof.
   destruct_inv 64 PRE.
   
   (* Address 100000: tfind entry point *)
-  destruct PRE as (MEM & SP & X0 & X1 & X3).  
+  (* destruct PRE as (MEM & SP & X0 & X1 & X3).  *)
+  destruct PRE as (SP & MEM & X0 & X1 & X2).
   step. step. step. step.
   generalize_frame mem as fb.
-  exists fb, 0. psimpl. split.
-  reflexivity. 
+  exists fb, 0. psimpl.
+  - split.
+    + reflexivity.  (* sp ⊖ 48 = sp ⊖ 48 *)
+    + split.
+      * reflexivity.  (* setmem ... = mem' fb (by definition of mem') *)
+      * 
 Qed.
