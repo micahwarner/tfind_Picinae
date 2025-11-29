@@ -62,7 +62,12 @@ Section Invariants.
         s R_SP = sp /\ s V_MEM64 = mem /\
         s R_X0 = arg1 /\ s R_X1 = arg2 /\ s R_X2 = arg3
       )
-
+        (* X1 Parameter Validation *)
+    | 0x100010 => Inv 1 (∃ fb k,
+      s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
+      s R_X19 = arg2 ⊕ k /\ s R_X20 = arg1 ⊕ k /\ s R_X21 = arg3 ⊕ k
+      )
+      
     (* loop invariant *)
     | 0x100020 => Inv 1 (∃ fb k,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
@@ -98,11 +103,28 @@ Theorem tfind_partial_correctness:
          (SP: s R_SP = sp) (MEM: s V_MEM64 = mem) (X30: s R_X30 = a')
          (RX0: s R_X0 = arg1) (RX1: s R_X1 = arg2) (RX2: s R_X2 = arg3),
           satisfies_all tfind_lo_tfind_armv8 
-                           (invs1  sp mem a' arg1 arg2)
-                           (exits1 sp mem a' arg1 arg2) ((x',s')::t).
+                           (invs1  sp mem arg1 arg2 arg3)
+                           (exits1 sp mem arg1 arg2 arg3) ((x',s')::t).
 Proof.
   (* Use prove_invs to initiate a proof by induction. *)
   intros. apply prove_invs.
   (* Base case: The invariant at the subroutine entry point is satisfied. *)
-  simpl. rewrite ENTRY. step. repeat split. assumption. assumption. assumption.
+  simpl. rewrite ENTRY. step. repeat split; assumption.
+  
+  (* Change assumptions about s into assumptions about s1. *)
+  intros.
+  erewrite startof_prefix in ENTRY; try eassumption.
+  eapply models_at_invariant; try eassumption. apply welltyped. intro MDL1.
+  set (x20 := s R_X20) in *. set (x21 := s R_X21) in *. clearbody x20 x21.
+  clear - PRE MDL1. rename t1 into t. rename s1 into s. rename MDL1 into MDL.
+  
+  (* Break the proof into cases, one for each internal invariant-point. *)
+  destruct_inv 64 PRE.
+  
+  (* Address 100000: tfind entry point *)
+  destruct PRE as (MEM & SP & X0 & X1 & X3).  
+  step. step. step. step.
+  generalize_frame mem as fb.
+  exists fb, 0. psimpl. split.
+  reflexivity. 
 Qed.
