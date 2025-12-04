@@ -119,6 +119,173 @@ End Invariants.
 
 Search "satisfies_all".
 
+Require Import Coq.Lists.List. 
+Require Import Coq.Bool.Bool.
+Import ListNotations.
+
+Fixpoint path_moreleft (p q : list bool) : bool := (* check if path p is more left than path q*)
+  match p, q with
+  | [], [] => true
+  | [], b :: qs => b               (* [] ≤ (b::qs) iff b = true *)
+  | b :: ps, [] => negb b          (* (b::ps) ≤ [] iff b = false *)
+  | b1 :: ps, b2 :: qs =>
+      if Bool.eqb b1 b2 then path_moreleft ps qs
+      else negb b1                 (* false < true → negb false = true; negb true = false *)
+  end.
+  
+Compute path_moreleft [] [false].   (*p is root, q is left child of root, = false *)
+Compute path_moreleft [] [true].    (*p is root, q is right child of root, = true  *)
+Compute path_moreleft [false] [].   (*p is left child of root, q is root, = true  *)
+Compute path_moreleft [false] [false; false]. (*p is first left child of root, q is left child of p, = false *)
+Compute path_moreleft [false; true] [false].  (*p is right child of q, q is left child of root = false *)
+
+(* Reflexivity: p <= p *)
+Theorem path_moreleft_refl : forall p, path_moreleft p p = true.
+Proof.
+  induction p as [ | b p IH ].
+  - simpl. reflexivity.
+  - simpl. replace (Bool.eqb b b) with true.
+    * apply IH.
+    * destruct b; simpl; reflexivity.
+Qed.
+
+(* Antisymmetry: if p ≤ q and q ≤ p then p = q *)
+Theorem path_moreleft_antisym : forall p q,
+  path_moreleft p q = true ->
+  path_moreleft q p = true ->
+  p = q.
+Proof.
+  induction p as [ | b1 p IH ]; intros [ | b2 q ] Hpq Hqp; simpl in *.
+  - reflexivity.
+  - (* p = [], q = b2 :: q *)
+    destruct b2; simpl in *; try discriminate.
+  - (* p = b1 :: p, q = [] *)
+    destruct b1; simpl in *; try discriminate.
+  - (* p = b1 :: p, q = b2 :: q *)
+    destruct (Bool.eqb b1 b2) eqn:Heq12.
+    + (* heads equal *) 
+    apply eqb_prop in Heq12.
+    f_equal.
+      * apply Heq12.
+      * apply IH.
+        -- exact Hpq.
+        -- rewrite Heq12 in Hqp. replace (Bool.eqb b2 b2) with true in Hqp.
+           apply Hqp. destruct b2; reflexivity.
+    + (* heads differ - impossible *)
+    simpl in Hpq, Hqp.
+    destruct b1; destruct b2; simpl in *; try discriminate.
+Qed.
+
+(* Totality: for any p,q either p ≤ q or q ≤ p *)
+Theorem path_moreleft_total : forall p q,
+  path_moreleft p q = true \/ path_moreleft q p = true.
+Proof.
+  induction p as [ | b p IH ]; intros [ | c q ]; simpl.
+  - left. reflexivity. (* [], [] *)
+  - (* p = [], q = c::q *) 
+    destruct c.
+    + left. simpl. reflexivity.
+    + right. simpl. reflexivity.
+  - (* p = b::p, q = [] *) 
+    destruct b.
+    + right. simpl. reflexivity.
+    + left. simpl. reflexivity.
+  - (* p = b::p, q = c::q *)
+    destruct (Bool.eqb b c) eqn:Eb.
+    + (* b = c *)
+    apply eqb_prop in Eb. subst c.
+    destruct (IH q) as [H|H].
+      * left. exact H.
+      * right. replace (Bool.eqb b b) with true. simpl. exact H.
+        destruct b; simpl; reflexivity.
+    + (* b <> c *) 
+      destruct b, c; simpl in *; try contradiction; auto.
+Qed.
+
+Inductive ValueAt
+          (w : bitwidth) (e : endianness) (len : bitwidth)
+          (m : memory) (addr : addr)
+  : list bool -> N -> Prop :=
+| VA_nil
+    (H0 : addr <> 0) :
+    ValueAt w e len m addr nil (getmem w e len m addr)
+| VA_left
+    (H0 : addr <> 0)
+    (p : list bool) (v : N)
+    (H1 : ValueAt w e len m (addr + 8) p v) :
+    ValueAt w e len m addr (false :: p) v
+| VA_right
+    (H0 : addr <> 0)
+    (p : list bool) (v : N)
+    (H1 : ValueAt w e len m (addr + 16) p v) :
+    ValueAt w e len m addr (true :: p) v.
+
+Definition sorted_tree
+           (w : bitwidth) (e : endianness) (len : bitwidth)
+           (m : memory) (addr : addr) : Prop :=
+  forall p1 p2 v1 v2,
+    path_moreleft p1 p2 = true ->
+    ValueAt w e len m addr p1 v1 ->
+    ValueAt w e len m addr p2 v2 ->
+    v1 <= v2.
+
+(* Every node is trivially “sorted” relative to itself; its value is always ≤ itself. *)
+Theorem sorted_tree_refl :
+  forall w e len m addr p v,
+    ValueAt w e len m addr p v -> (* assumes that the value v exists at path p in memory *)
+    sorted_tree w e len m addr -> (* assumes the tree rooted at addr is sorted *)
+    path_moreleft p p = true /\ (* goal 1: path p is reflexively more-left than itself *)
+    v <= v. (* goal 2: value at p is less than or equal to itself *)
+Proof.
+  intros w e len m addr p v Hval Hsorted.
+  split.
+  - apply path_moreleft_refl.
+  - apply N.le_refl.
+Qed.
+
+(* If two paths are mutually “more-left” than each other, 
+they must be the same path, so their values are equal. *)
+Theorem sorted_tree_antisym :
+  forall w e len m addr p q v1 v2,
+    ValueAt w e len m addr p v1 -> (* p has value v1 *)
+    ValueAt w e len m addr q v2 -> (* q has value v2 *)
+    sorted_tree w e len m addr -> (* the memory tree is sorted *)
+    path_moreleft p q = true -> (* assume p is more-left than q *)
+    path_moreleft q p = true -> (* assume q is more-left than p *)
+    p = q /\ v1 = v2. (* conclude paths are equal and values are equal *)
+Proof.
+  intros w e len m addr p q v1 v2 Hval1 Hval2 Hsorted Hpq Hqp.
+  (* paths are equal by antisymmetry of path_moreleft *)
+  assert (p = q) as Heq.
+  { apply path_moreleft_antisym; assumption. }
+  split; [assumption|].
+  (* values are equal by sorted_tree in both directions *)
+  assert (v1 <= v2) as H12.
+  { apply Hsorted with (p1:=p) (p2:=q); assumption. }
+  assert (v2 <= v1) as H21.
+  { apply Hsorted with (p1:=q) (p2:=p); assumption. }
+  (* conclude equality of values *)
+  apply N.le_antisymm; assumption.  (* or Nat.le_antisymm if v : nat *)
+Qed.
+
+(* Any two nodes in the tree are comparable: the value at the more-left path is 
+always ≤ the value at the more-right path. *)
+
+Theorem sorted_tree_total :
+  forall w e len m addr p q v1 v2,
+    ValueAt w e len m addr p v1 -> (* p has value v1 *)
+    ValueAt w e len m addr q v2 -> (* q has value v2 *)
+    sorted_tree w e len m addr -> (* assume the tree is sorted *)
+    (path_moreleft p q = true /\ v1 <= v2) \/ (* either p is more-left than q and v1 <= v2 *)
+    (path_moreleft q p = true /\ v2 <= v1). (* or q is more-left than p and v2 <= v1 *)
+Proof.
+  intros w e len m addr p q v1 v2 Hval1 Hval2 Hsorted.
+  destruct (path_moreleft_total p q) as [Hpq|Hqp].
+  - left. split; [assumption|apply Hsorted with (p1:=p) (p2:=q); assumption].
+  - right. split; [assumption|apply Hsorted with (p1:=q) (p2:=p); assumption].
+Qed.
+
+
 (* Create a step tactic that prints a progress message (for demos). *)
 Ltac step := time arm8_step.
 
