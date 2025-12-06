@@ -41,7 +41,7 @@ Section Invariants.
   Variable mem : memory    (* initial memory state *).
   Variable raddr : N       (* return address (R_X30) *).
   Variable arg1 : N        (* tfind: 1st pointer arg (R_X0)
-                              callback signature *).
+                              desired index *).
   Variable arg2 : N        (* tfind: 2nd pointer arg (R_X1)
                               root node pointer *).
   Variable arg3 : N        (* tfind: 3rd pointer arg (R_X2)
@@ -65,7 +65,7 @@ Section Invariants.
         (* X1 Parameter Validation *)
     | 0x100010 => Inv 1 (∃ fb k,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      s R_X19 = arg2 ⊕ k /\ s R_X20 = arg1 ⊕ k /\ s R_X21 = arg3 ⊕ k
+      s R_X0 = arg1 ⊕ k /\ s R_X1 = arg2 ⊕ k /\ s R_X2 = arg3 ⊕ k
       )
       
     (* loop invariant *)
@@ -324,5 +324,6 @@ Proof.
     + reflexivity.  (* sp ⊖ 48 = sp ⊖ 48 *)
     + split.
       * reflexivity.  (* setmem ... = mem' fb (by definition of mem') *)
-      * 
+      * rewrite X0. rewrite X1. rewrite X2. repeat split; reflexivity.
+
 Qed.
