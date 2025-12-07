@@ -39,7 +39,6 @@ Section Invariants.
 
   Variable sp : N          (* initial stack pointer *).
   Variable mem : memory    (* initial memory state *).
-  Variable raddr : N       (* return address (R_X30) *).
   Variable arg1 : N        (* tfind: 1st pointer arg (R_X0)
                               desired index *).
   Variable arg2 : N        (* tfind: 2nd pointer arg (R_X1)
@@ -81,11 +80,9 @@ Section Invariants.
       )
       
     (* 0x100048: Just before the "not found" path completes; stack frame and saved registers intact. *)
-    | 0x100048 => Inv 1 (∃ fb k,
+    | 0x100048 => Inv 1 (∃ fb,
       s R_SP = sp ⊖ 48 /\
-      s V_MEM64 = mem' fb /\
-      s R_X20 = arg1 ⊕ k /\
-      s R_X21 = arg3 ⊕ k
+      s V_MEM64 = mem' fb /\ (s R_X1 = 0 \/ s R_X19 = 0)
     )
 
   (* 0x10004c: After executing `mov x19,#0` (or arriving from cbz), x19 holds the final result value. *)
@@ -285,7 +282,6 @@ Proof.
   - right. split; [assumption|apply Hsorted with (p1:=q) (p2:=p); assumption].
 Qed.
 
-
 (* Create a step tactic that prints a progress message (for demos). *)
 Ltac step := time arm8_step.
 
@@ -320,10 +316,13 @@ Proof.
   step. step. step. step.
   generalize_frame mem as fb.
   exists fb, 0. psimpl.
-  - split.
-    + reflexivity.  (* sp ⊖ 48 = sp ⊖ 48 *)
-    + split.
-      * reflexivity.  (* setmem ... = mem' fb (by definition of mem') *)
-      * rewrite X0. rewrite X1. rewrite X2. repeat split; reflexivity.
-
+  repeat (split || assumption || reflexivity). (* solves by definition *)
+  
+  (* Address 100010: tfind Parameter Validation*)
+  destruct PRE as (fb & k & SP & MEM & X0 & X1 & X2).
+  step. 
+    (* the root pointer is invalid / 0 *)
+    + exists fb. repeat (reflexivity || assumption || split). left. apply N.eqb_eq, BC.
+    
+    + step. step. step. exists fb, 0. repeat (reflexivity || assumption || split).
 Qed.
