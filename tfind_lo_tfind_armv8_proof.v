@@ -70,7 +70,7 @@ Section Invariants.
     (* loop invariant *)
     | 0x100020 => Inv 1 (∃ fb k,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      s R_X19 = arg2 ⊕ k /\ s R_X20 = arg1 ⊕ k /\ s R_X21 = arg3 ⊕ k
+      s R_X19 = mem' fb Ⓠ[arg2+k] /\ s R_X20 = arg1 ⊕ k /\ s R_X21 = arg3 ⊕ k
       )
 
     (* case-equal, non-null characters found (successful find)*)
@@ -322,7 +322,19 @@ Proof.
   destruct PRE as (fb & k & SP & MEM & X0 & X1 & X2).
   step. 
     (* the root pointer is invalid / 0 *)
-    + exists fb. repeat (reflexivity || assumption || split). left. apply N.eqb_eq, BC.
+    exists fb. repeat (reflexivity || assumption || split). left. apply N.eqb_eq, BC.
     
-    + step. step. step. exists fb, 0. repeat (reflexivity || assumption || split).
+    (* valid root pointer*)
+    step. step. step. exists fb, k. repeat (reflexivity || assumption || split). 
+    
+  
+  (* Address 100020: tfind main Loop*)  
+  destruct PRE as (fb & k & SP & MEM & X19 & X20 & X21).
+  step.
+  
+    (* invalid pointer at current node*)
+  + exists fb. repeat (reflexivity || assumption || split). right. apply N.eqb_eq, BC.
+  
+    (* valid node main loop section with BLR call*)
+  + step. step. step. step.
 Qed.
