@@ -217,69 +217,77 @@ Inductive ValueAt
     (H1 : ValueAt w e len m (addr + 16) p v) :
     ValueAt w e len m addr (true :: p) v.
 
+Definition cmp_fun := memory -> N -> N -> N.
+
+(* interpretation convention: result = 0 means "the relation holds" *)
+Definition cmp_result_rel (cmp : cmp_fun) (m : memory) : N -> N -> Prop :=
+  fun x y => cmp m x y = 0.
+
 Definition sorted_tree
            (w : bitwidth) (e : endianness) (len : bitwidth)
-           (m : memory) (addr : addr) : Prop :=
+           (m : memory) (addr : addr) (cmp : cmp_fun): Prop :=
+  let rel := cmp_result_rel cmp m in
   forall p1 p2 v1 v2,
     path_moreleft p1 p2 = true ->
     ValueAt w e len m addr p1 v1 ->
     ValueAt w e len m addr p2 v2 ->
-    v1 <= v2.
+    rel v1 v2.
 
 (* Every node is trivially “sorted” relative to itself; its value is always ≤ itself. *)
 Theorem sorted_tree_refl :
-  forall w e len m addr p v,
-    ValueAt w e len m addr p v -> (* assumes that the value v exists at path p in memory *)
-    sorted_tree w e len m addr -> (* assumes the tree rooted at addr is sorted *)
-    path_moreleft p p = true /\ (* goal 1: path p is reflexively more-left than itself *)
-    v <= v. (* goal 2: value at p is less than or equal to itself *)
+  forall w e len m addr p v (cmp : cmp_fun),
+    sorted_tree w e len m addr cmp ->
+    (forall x, cmp_result_rel cmp m x x) ->
+    path_moreleft p p = true /\ cmp_result_rel cmp m v v.
 Proof.
   intros w e len m addr p v Hval Hsorted.
   split.
   - apply path_moreleft_refl.
-  - apply N.le_refl.
+  - apply H.
 Qed.
 
 (* If two paths are mutually “more-left” than each other, 
 they must be the same path, so their values are equal. *)
 Theorem sorted_tree_antisym :
-  forall w e len m addr p q v1 v2,
-    ValueAt w e len m addr p v1 -> (* p has value v1 *)
-    ValueAt w e len m addr q v2 -> (* q has value v2 *)
-    sorted_tree w e len m addr -> (* the memory tree is sorted *)
-    path_moreleft p q = true -> (* assume p is more-left than q *)
-    path_moreleft q p = true -> (* assume q is more-left than p *)
-    p = q /\ v1 = v2. (* conclude paths are equal and values are equal *)
+  forall w e len m addr p q v1 v2 (cmp : cmp_fun),
+    ValueAt w e len m addr p v1 ->
+    ValueAt w e len m addr q v2 ->
+    sorted_tree w e len m addr cmp ->
+    path_moreleft p q = true ->
+    path_moreleft q p = true ->
+    (forall x y, cmp_result_rel cmp m x y -> cmp_result_rel cmp m y x -> x = y) ->
+    p = q /\ v1 = v2.
 Proof.
-  intros w e len m addr p q v1 v2 Hval1 Hval2 Hsorted Hpq Hqp.
-  (* paths are equal by antisymmetry of path_moreleft *)
+  intros w e len m addr p q v1 v2 cmp Hval1 Hval2 Hsorted Hpq Hqp Hcmp_antisym.
+  (* paths equal by antisymmetry of path_moreleft *)
   assert (p = q) as Heq.
   { apply path_moreleft_antisym; assumption. }
   split; [assumption|].
-  (* values are equal by sorted_tree in both directions *)
-  assert (v1 <= v2) as H12.
-  { apply Hsorted with (p1:=p) (p2:=q); assumption. }
-  assert (v2 <= v1) as H21.
-  { apply Hsorted with (p1:=q) (p2:=p); assumption. }
-  (* conclude equality of values *)
-  apply N.le_antisymm; assumption.  (* or Nat.le_antisymm if v : nat *)
+  (* values are comparable by the sorted_tree property *)
+  unfold sorted_tree in Hsorted. simpl in Hsorted.
+  assert (cmp_result_rel cmp m v1 v2) as H12.
+  { apply Hsorted with (p1 := p) (p2 := q); assumption. }
+  assert (cmp_result_rel cmp m v2 v1) as H21.
+  { apply Hsorted with (p1 := q) (p2 := p); assumption. }
+  (* use antisymmetry of the comparator relation to conclude equality *)
+  specialize (Hcmp_antisym v1 v2 H12 H21). now subst.
 Qed.
 
 (* Any two nodes in the tree are comparable: the value at the more-left path is 
 always ≤ the value at the more-right path. *)
 
 Theorem sorted_tree_total :
-  forall w e len m addr p q v1 v2,
-    ValueAt w e len m addr p v1 -> (* p has value v1 *)
-    ValueAt w e len m addr q v2 -> (* q has value v2 *)
-    sorted_tree w e len m addr -> (* assume the tree is sorted *)
-    (path_moreleft p q = true /\ v1 <= v2) \/ (* either p is more-left than q and v1 <= v2 *)
-    (path_moreleft q p = true /\ v2 <= v1). (* or q is more-left than p and v2 <= v1 *)
+  forall w e len m addr p q v1 v2 (cmp : cmp_fun),
+    ValueAt w e len m addr p v1 ->
+    ValueAt w e len m addr q v2 ->
+    sorted_tree w e len m addr cmp ->
+    (path_moreleft p q = true /\ cmp_result_rel cmp m v1 v2) \/
+    (path_moreleft q p = true /\ cmp_result_rel cmp m v2 v1).
 Proof.
-  intros w e len m addr p q v1 v2 Hval1 Hval2 Hsorted.
-  destruct (path_moreleft_total p q) as [Hpq|Hqp].
-  - left. split; [assumption|apply Hsorted with (p1:=p) (p2:=q); assumption].
-  - right. split; [assumption|apply Hsorted with (p1:=q) (p2:=p); assumption].
+  intros w e len m addr p q v1 v2 cmp Hval1 Hval2 Hsorted.
+  destruct (path_moreleft_total p q) as [Hpq | Hqp].
+  - left. split; [assumption | unfold sorted_tree in Hsorted; simpl; apply Hsorted with (p1:=p) (p2:=q); assumption].
+  - right. split; [assumption | unfold sorted_tree in Hsorted; simpl; apply Hsorted with (p1:=q) (p2:=p); assumption].
 Qed.
 
 
@@ -307,9 +315,12 @@ Theorem tfind_partial_correctness:
           satisfies_all tfind_lo_tfind_armv8 
                            (invs1  sp mem arg1 arg2 arg3)
                            (exits1 sp mem arg1 arg2 arg3) ((x',s')::t).
+
 Proof.
+  
   (* Use prove_invs to initiate a proof by induction. *)
   intros. apply prove_invs.
+  
   (* Base case: The invariant at the subroutine entry point is satisfied. *)
   simpl. rewrite ENTRY. step. repeat split; assumption.
   
