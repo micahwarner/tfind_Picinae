@@ -282,6 +282,16 @@ Proof.
   - right. split; [assumption|apply Hsorted with (p1:=q) (p2:=p); assumption].
 Qed.
 
+
+(* This needs to be edited to restrict a good callee to maintain certain registers/data *)
+Definition callee_postcondition (s s1: store) : Prop :=
+    s V_MEM64 = s1 V_MEM64 /\ s R_X19 = s1 R_X19 /\ s R_X20 = s1 R_X20 /\ s R_X21 = s1 R_X21.
+
+Definition good_callee (a:addr) := forall p inv xp s t,
+    (forall s1 t1, callee_postcondition s s1 ->
+              nextinv p inv xp true ((Addr (s R_X30), s1) :: t1 ++ ((Addr a, s)::t))
+    ) -> nextinv p inv xp true ((Addr a, s) :: t).
+
 (* Create a step tactic that prints a progress message (for demos). *)
 Ltac step := time arm8_step.
 
@@ -289,8 +299,11 @@ Theorem tfind_partial_correctness:
   forall s sp mem t s' x' arg1 arg2 arg3 a'
          (ENTRY: startof t (x',s') = (Addr 0x100000, s))
          (MDL: models arm8typctx s)
+         (H1: forall a, good_callee a)
+         (H: good_callee arg3)
          (SP: s R_SP = sp) (MEM: s V_MEM64 = mem) (X30: s R_X30 = a')
-         (RX0: s R_X0 = arg1) (RX1: s R_X1 = arg2) (RX2: s R_X2 = arg3),
+         (RX0: s R_X0 = arg1) (RX1: s R_X1 = arg2) (RX2: s R_X2 = arg3)
+         (cmp: N -> N -> N -> N),
           satisfies_all tfind_lo_tfind_armv8 
                            (invs1  sp mem arg1 arg2 arg3)
                            (exits1 sp mem arg1 arg2 arg3) ((x',s')::t).
@@ -305,7 +318,7 @@ Proof.
   erewrite startof_prefix in ENTRY; try eassumption.
   eapply models_at_invariant; try eassumption. apply welltyped. intro MDL1.
   set (x20 := s R_X20) in *. set (x21 := s R_X21) in *. clearbody x20 x21.
-  clear - PRE MDL1. rename t1 into t. rename s1 into s. rename MDL1 into MDL.
+  clear - PRE MDL1 H H1 cmp. rename t1 into t. rename s1 into s. rename MDL1 into MDL.
   
   (* Break the proof into cases, one for each internal invariant-point. *)
   destruct_inv 64 PRE.
@@ -336,5 +349,5 @@ Proof.
   + exists fb. repeat (reflexivity || assumption || split). right. apply N.eqb_eq, BC.
   
     (* valid node main loop section with BLR call*)
-  + step. step. step. step.
+  + step. step. step. apply H.
 Qed.
