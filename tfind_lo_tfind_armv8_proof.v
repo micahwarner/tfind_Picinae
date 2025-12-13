@@ -292,11 +292,12 @@ Qed.
 
 
 (* This needs to be edited to restrict a good callee to maintain certain registers/data *)
-Definition callee_postcondition (s s1: store) : Prop :=
-    s V_MEM64 = s1 V_MEM64 /\ s R_X19 = s1 R_X19 /\ s R_X20 = s1 R_X20 /\ s R_X21 = s1 R_X21.
+Definition callee_postcondition cmp (s s1: store) : Prop :=
+    s V_MEM64 = s1 V_MEM64 /\ 
+    s1 R_X0 = cmp (s V_MEM64) (s R_X0) (s R_X1).
 
-Definition good_callee (a:addr) := forall p inv xp s t,
-    (forall s1 t1, callee_postcondition s s1 ->
+Definition good_callee cmp (a:addr) := forall p inv xp s t,
+    (forall s1 t1, callee_postcondition cmp s s1 ->
               nextinv p inv xp true ((Addr (s R_X30), s1) :: t1 ++ ((Addr a, s)::t))
     ) -> nextinv p inv xp true ((Addr a, s) :: t).
 
@@ -307,11 +308,11 @@ Theorem tfind_partial_correctness:
   forall s sp mem t s' x' arg1 arg2 arg3 a'
          (ENTRY: startof t (x',s') = (Addr 0x100000, s))
          (MDL: models arm8typctx s)
-         (H1: forall a, good_callee a)
-         (H: good_callee arg3)
          (SP: s R_SP = sp) (MEM: s V_MEM64 = mem) (X30: s R_X30 = a')
          (RX0: s R_X0 = arg1) (RX1: s R_X1 = arg2) (RX2: s R_X2 = arg3)
-         (cmp: N -> N -> N -> N),
+         (cmp: N -> N -> N -> N)
+         (H1: forall a, good_callee cmp a)
+         (H: good_callee cmp arg3),
           satisfies_all tfind_lo_tfind_armv8 
                            (invs1  sp mem arg1 arg2 arg3)
                            (exits1 sp mem arg1 arg2 arg3) ((x',s')::t).
@@ -360,5 +361,5 @@ Proof.
   + exists fb. repeat (reflexivity || assumption || split). right. apply N.eqb_eq, BC.
   
     (* valid node main loop section with BLR call*)
-  + step. step. step. apply H.
+  + step. step. step. apply H1. intros. unfold callee_postcondition in H0. destruct H0.
 Qed.
