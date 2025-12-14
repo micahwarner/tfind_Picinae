@@ -76,7 +76,7 @@ Section Invariants.
     (* case-equal, non-null characters found (successful find)*)
     | 0x100034 => Inv 1 (∃ fb k,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      s R_X19 = arg2 ⊕ k /\ s R_X20 = arg1 ⊕ k /\ s R_X21 = arg3 ⊕ k
+      s R_X19 = mem' fb Ⓠ[arg2+k] /\ s R_X20 = arg1 ⊕ k /\ s R_X21 = arg3 ⊕ k
       )
       
     (* 0x100048: Just before the "not found" path completes; stack frame and saved registers intact. *)
@@ -294,6 +294,10 @@ Qed.
 (* This needs to be edited to restrict a good callee to maintain certain registers/data *)
 Definition callee_postcondition cmp (s s1: store) : Prop :=
     s V_MEM64 = s1 V_MEM64 /\ 
+    s R_X19 = s1 R_X19 /\
+    s R_X20 = s1 R_X20 /\
+    s R_X21 = s1 R_X21 /\
+    s R_SP = s1 R_SP /\
     s1 R_X0 = cmp (s V_MEM64) (s R_X0) (s R_X1).
 
 Definition good_callee cmp (a:addr) := forall p inv xp s t,
@@ -360,6 +364,9 @@ Proof.
     (* invalid pointer at current node*)
   + exists fb. repeat (reflexivity || assumption || split). right. apply N.eqb_eq, BC.
   
-    (* valid node main loop section with BLR call*)
-  + step. step. step. apply H1. intros. unfold callee_postcondition in H0. destruct H0.
+    (* valid node main loop section with BLR call *)
+  + step. step. step. apply H1. intros. unfold callee_postcondition in H0.
+  step. exists fb, k. repeat (destruct H2 || destruct H0 || destruct H3). repeat (split || assumption).
+
+ 
 Qed.
