@@ -369,7 +369,7 @@ Proof.
   step. exists fb, k. repeat (destruct H2 || destruct H0 || destruct H3). repeat (split || assumption).
 
  
-(* Address 100034 *)
+  (* Address 100034 *)
   +  destruct PRE as (fb_frame & k_frame & SP & MEM & X19 & X20 & X21).
 
   step.
@@ -382,5 +382,14 @@ Proof.
   - eapply NIStep.
     vm_compute. reflexivity.
     vm_compute. reflexivity.
+
+  
+  (* Address 10004c: Restore x21 from stack *)
+  + destruct PRE as (n_val & k_val & fb_frame & SP & MEM & X19 & X20 & X21).
+    step.
+    
+    (* Prove transition to 0x100050 *)
+    exists n_val, k_val, fb_frame.
+    repeat (split || assumption || reflexivity).
       
 Qed.
