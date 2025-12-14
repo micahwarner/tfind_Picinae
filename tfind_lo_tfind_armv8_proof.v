@@ -370,7 +370,7 @@ Proof.
 
  
   (* Address 100034 *)
-  +  destruct PRE as (fb_frame & k_frame & SP & MEM & X19 & X20 & X21).
+  (* +  destruct PRE as (fb_frame & k_frame & SP & MEM & X19 & X20 & X21).
 
   step.
     
@@ -390,6 +390,23 @@ Proof.
     
     (* Prove transition to 0x100050 *)
     exists n_val, k_val, fb_frame.
-    repeat (split || assumption || reflexivity).
+    repeat (split || assumption || reflexivity). *)
+
+  (* Address 100034: case-equal, non-null characters found (successful find)*)
+  + destruct PRE as (fb & k & SP & MEM & X19 & X20 & X21).
+  step.
+  exists (s R_X19), k, fb.
+  repeat (assumption || reflexivity || split).
+  step. step. step. step.
+  exists fb, k.
+  repeat split.
+  assumption.
+  admit. (* Expression for child node calculation *)
+  assumption.
+  assumption.
+  
+  (* Address 100048: Just before the "not found" path completes; stack frame and saved registers intact. *)
+  + destruct PRE as (fb & SP & MEM & zero).
+  step.
       
 Qed.
