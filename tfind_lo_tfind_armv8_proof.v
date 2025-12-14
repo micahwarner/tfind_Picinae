@@ -376,5 +376,18 @@ Proof.
   + step. step. step. apply H1. intros. unfold callee_postcondition in H0.
   step. exists fb, k. repeat (destruct H2 || destruct H0 || destruct H3). repeat (split || assumption).
 
- 
+   (* Address 100034 *)
+  +  destruct PRE as (fb_frame & k_frame & SP & MEM & X19 & X20 & X21).
+
+  step.
+    
+  (* goal 1 *)
+  - exists (s R_X19), k_frame, fb_frame.
+    repeat (split || assumption || reflexivity).
+  
+  (* goal 2 *)
+  - eapply NIStep.
+    vm_compute. reflexivity.
+    vm_compute. reflexivity.
+      
 Qed.
