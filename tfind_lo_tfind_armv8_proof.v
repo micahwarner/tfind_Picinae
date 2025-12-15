@@ -5,6 +5,7 @@ Require Import NArith.
 Require Import ZArith.
 Require Import Picinae_armv8_pcode.
 Require Import tfind_lo_tfind_armv8.
+Require Import Lia.
 
 Import ARM8Notations.
 Open Scope N.
@@ -62,21 +63,22 @@ Section Invariants.
         s R_X0 = arg1 /\ s R_X1 = arg2 /\ s R_X2 = arg3
       )
         (* X1 Parameter Validation *)
-    | 0x100010 => Inv 1 (∃ fb k,
+    | 0x100010 => Inv 1 (∃ fb,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      s R_X0 = arg1 ⊕ k /\ s R_X1 = arg2 ⊕ k /\ s R_X2 = arg3 ⊕ k
+      s R_X0 = arg1 /\ s R_X1 = arg2 /\ s R_X2 = arg3
       )
       
     (* loop invariant *)
     | 0x100020 => Inv 1 (∃ fb k,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      s R_X19 = mem' fb Ⓠ[arg2+k] /\ s R_X20 = arg1 ⊕ k /\ s R_X21 = arg3 ⊕ k
+      (s R_X19 = mem' fb Ⓠ[k + arg2] ) /\
+        s R_X20 = arg1 /\ s R_X21 = arg3
       )
 
     (* case-equal, non-null characters found (successful find)*)
     | 0x100034 => Inv 1 (∃ fb k,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      s R_X19 = mem' fb Ⓠ[arg2+k] /\ s R_X20 = arg1 ⊕ k /\ s R_X21 = arg3 ⊕ k
+      s R_X19 = mem' fb Ⓠ[k + arg2] /\ s R_X20 = arg1 /\ s R_X21 = arg3
       )
       
     (* 0x100048: Just before the "not found" path completes; stack frame and saved registers intact. *)
@@ -86,21 +88,21 @@ Section Invariants.
     )
 
   (* 0x10004c: After executing `mov x19,#0` (or arriving from cbz), x19 holds the final result value. *)
-  | 0x10004c => Inv 1 (∃ n k fb,
+  | 0x10004c => Inv 1 (∃ n fb,
       s R_SP = sp ⊖ 48 /\
       s V_MEM64 = mem' fb /\
       s R_X19 = n /\             (* result in x19 (or 0 if not found) *)
-      s R_X20 = arg1 ⊕ k /\
-      s R_X21 = arg3 ⊕ k
+      s R_X20 = arg1 /\
+      s R_X21 = arg3
     )
 
   (* 0x100050: After `mov x0,x19`, the function result is now placed in x0 for return. *)
-  | 0x100050 => Inv 1 (∃ n k fb,
+  | 0x100050 => Inv 1 (∃ n fb,
       s R_SP = sp ⊖ 48 /\
       s V_MEM64 = mem' fb /\
       s R_X0 = n /\ s R_X19 = n /\
-      s R_X20 = arg1 ⊕ k /\
-      s R_X21 = arg3 ⊕ k
+      s R_X20 = arg1 /\
+      s R_X21 = arg3
     )
 
     (* tfind return site *)
@@ -290,6 +292,16 @@ Proof.
   - right. split; [assumption | unfold sorted_tree in Hsorted; simpl; apply Hsorted with (p1:=q) (p2:=p); assumption].
 Qed.
 
+Theorem cset_branch_logic :
+   forall s, N.lnot (s R_ZR) 1 mod 2 = 0 \/ N.lnot (s R_ZR) 1 mod 2 = 1.
+Proof.
+  intros.
+  destruct (N.lnot (s R_ZR) 1 mod 2) eqn:H. left. reflexivity. right. destruct p. 
+  assert (Hlt : N.lnot (s R_ZR) 1 mod 2 < 2). apply N.mod_upper_bound. lia. rewrite H in Hlt. lia. 
+  assert (Hlt : N.lnot (s R_ZR) 1 mod 2 < 2). apply N.mod_upper_bound. lia. rewrite H in Hlt. lia. 
+  reflexivity.
+Qed. 
+
 
 (* This needs to be edited to restrict a good callee to maintain certain registers/data *)
 Definition callee_postcondition cmp (s s1: store) : Prop :=
@@ -315,7 +327,6 @@ Theorem tfind_partial_correctness:
          (SP: s R_SP = sp) (MEM: s V_MEM64 = mem) (X30: s R_X30 = a')
          (RX0: s R_X0 = arg1) (RX1: s R_X1 = arg2) (RX2: s R_X2 = arg3)
          (cmp: N -> N -> N -> N)
-         (H1: forall a, good_callee cmp a)
          (H: good_callee cmp arg3),
           satisfies_all tfind_lo_tfind_armv8 
                            (invs1  sp mem arg1 arg2 arg3)
@@ -334,7 +345,7 @@ Proof.
   erewrite startof_prefix in ENTRY; try eassumption.
   eapply models_at_invariant; try eassumption. apply welltyped. intro MDL1.
   set (x20 := s R_X20) in *. set (x21 := s R_X21) in *. clearbody x20 x21.
-  clear - PRE MDL1 H H1 cmp. rename t1 into t. rename s1 into s. rename MDL1 into MDL.
+  clear - PRE MDL1 H cmp. rename t1 into t. rename s1 into s. rename MDL1 into MDL.
   
   (* Break the proof into cases, one for each internal invariant-point. *)
   destruct_inv 64 PRE.
@@ -344,17 +355,17 @@ Proof.
   destruct PRE as (SP & MEM & X0 & X1 & X2).
   step. step. step. step.
   generalize_frame mem as fb.
-  exists fb, 0. psimpl.
+  exists fb. psimpl.
   repeat (split || assumption || reflexivity). (* solves by definition *)
   
   (* Address 100010: tfind Parameter Validation*)
-  destruct PRE as (fb & k & SP & MEM & X0 & X1 & X2).
+  destruct PRE as (fb & SP & MEM & X0 & X1 & X2).
   step. 
     (* the root pointer is invalid / 0 *)
     exists fb. repeat (reflexivity || assumption || split). left. apply N.eqb_eq, BC.
     
     (* valid root pointer*)
-    step. step. step. exists fb, k. repeat (reflexivity || assumption || split). 
+    step. step. step. exists fb, 0. repeat (reflexivity || assumption || split).
     
   
   (* Address 100020: tfind main Loop*)  
@@ -365,9 +376,9 @@ Proof.
   + exists fb. repeat (reflexivity || assumption || split). right. apply N.eqb_eq, BC.
   
     (* valid node main loop section with BLR call *)
-  + step. step. step. apply H1. intros. unfold callee_postcondition in H0.
-  step. exists fb, k. repeat (destruct H2 || destruct H0 || destruct H3). repeat (split || assumption).
-
+  + step. step. step. apply H. intros. unfold callee_postcondition in H0.
+  step. exists fb, k. repeat (destruct H2 || destruct H0 || destruct H1). repeat (split || assumption).
+  
  
   (* Address 100034 *)
   (* +  destruct PRE as (fb_frame & k_frame & SP & MEM & X19 & X20 & X21).
@@ -395,12 +406,21 @@ Proof.
   (* Address 100034: case-equal, non-null characters found (successful find)*)
   + destruct PRE as (fb & k & SP & MEM & X19 & X20 & X21).
   step.
-  exists (s R_X19), k, fb.
+  exists (mem' sp mem fb Ⓠ[ k + arg2 ]), fb.
   repeat (assumption || reflexivity || split).
   step. step. step. step.
   exists fb, k.
   repeat split.
-  assumption.
+  assumption. 
+  (* destructed the if statement *)
+  destruct (s R_NG ?= s R_OV) eqn:Hcmp.
+  
+  (* True case *)
+  rewrite N.compare_eq_iff in Hcmp. rewrite Hcmp. rewrite N.eqb_refl.
+  destruct (cset_branch_logic s) as [H1 | H2].
+    rewrite H1. rewrite N.shiftl_0_l. admit. admit. admit.
+
+
   admit. (* Expression for child node calculation *)
   assumption.
   assumption.
