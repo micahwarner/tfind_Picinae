@@ -87,22 +87,11 @@ Section Invariants.
       s V_MEM64 = mem' fb /\ (s R_X1 = 0 \/ s R_X19 = 0)
     )
 
-  (* 0x10004c: After executing `mov x19,#0` (or arriving from cbz), x19 holds the final result value. *)
-  | 0x10004c => Inv 1 (∃ fb n,
-      s R_SP = sp ⊖ 48 /\
-      s V_MEM64 = mem' fb /\
-      s R_X19 = n /\             (* result in x19 (or 0 if not found) *)
-      s R_X20 = arg1 /\
-      s R_X21 = arg3
-    )
-
-  (* 0x100050: After `mov x0,x19`, the function result is now placed in x0 for return. *)
-  | 0x100050 => Inv 1 (∃ n fb,
-      s R_SP = sp ⊖ 48 /\
-      s V_MEM64 = mem' fb /\
-      s R_X0 = n /\ s R_X19 = n /\
-      s R_X20 = arg1 /\
-      s R_X21 = arg3
+    (* 0x10004c: After executing `mov x19,#0` (or arriving from cbz), x19 holds the final result value. *)
+    | 0x10004c => Inv 1 (∃ fb n,
+        s R_SP = sp ⊖ 48 /\
+        s V_MEM64 = mem' fb /\
+        s R_X19 = n              (* result in x19 (or 0 if not found) *)
     )
 
     (* tfind return site *)
@@ -392,5 +381,8 @@ Proof.
   (* Address 100048: Just before the "not found" path completes; stack frame and saved registers intact. *)
   + destruct PRE as (fb & SP & MEM & zero).
   step. exists fb, 0. repeat (assumption || reflexivity || split).
+  
+  + destruct PRE as ( fb & addr & SP & MEM & X19).
+  step. step. step. step.
       
 Qed.
