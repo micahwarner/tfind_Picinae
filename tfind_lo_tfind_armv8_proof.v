@@ -379,51 +379,15 @@ Proof.
   + step. step. step. apply H. intros. unfold callee_postcondition in H0.
   step. exists fb, k. repeat (destruct H2 || destruct H0 || destruct H1). repeat (split || assumption).
   
- 
-  (* Address 100034 *)
-  (* +  destruct PRE as (fb_frame & k_frame & SP & MEM & X19 & X20 & X21).
-
-  step.
-    
-  (* goal 1 *)
-  - exists (s R_X19), k_frame, fb_frame.
-    repeat (split || assumption || reflexivity).
-  
-  (* goal 2 *)
-  - eapply NIStep.
-    vm_compute. reflexivity.
-    vm_compute. reflexivity.
-
-  
-  (* Address 10004c: Restore x21 from stack *)
-  + destruct PRE as (n_val & k_val & fb_frame & SP & MEM & X19 & X20 & X21).
-    step.
-    
-    (* Prove transition to 0x100050 *)
-    exists n_val, k_val, fb_frame.
-    repeat (split || assumption || reflexivity). *)
-
   (* Address 100034: case-equal, non-null characters found (successful find)*)
   + destruct PRE as (fb & k & SP & MEM & X19 & X20 & X21).
   step.
   exists fb, (mem' sp mem fb Ⓠ[ k ]).
   repeat (assumption || reflexivity || split).
   step. step. step. step.
-  exists fb.
-  repeat split.
-  assumption.
-  (* destructed the if statement *)
-  destruct (s R_NG ?= s R_OV) eqn:Hcmp.
+  exists fb. eexists.
+  repeat (assumption || reflexivity || split).
   
-  (* True case *)
-  rewrite N.compare_eq_iff in Hcmp. rewrite Hcmp. rewrite N.eqb_refl.
-  destruct (cset_branch_logic s) as [H1 | H2].
-    rewrite H1. rewrite N.shiftl_0_l. admit. admit. admit.
-
-
-  admit. (* Expression for child node calculation *)
-  assumption.
-  assumption.
   
   (* Address 100048: Just before the "not found" path completes; stack frame and saved registers intact. *)
   + destruct PRE as (fb & SP & MEM & zero).
