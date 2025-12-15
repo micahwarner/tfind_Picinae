@@ -60,40 +60,49 @@ Section Invariants.
     (* tfind entry point *)
     | 0x100000 => Inv 1 (
         s R_SP = sp /\ s V_MEM64 = mem /\
-        s R_X0 = arg1 /\ s R_X1 = arg2 /\ s R_X2 = arg3
+        s R_X0 = arg1 /\ s R_X1 = arg2 /\ s R_X2 = arg3 /\
+  s R_X20 = x20 /\ s R_X21 = x21
       )
         (* X1 Parameter Validation *)
     | 0x100010 => Inv 1 (∃ fb,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      s R_X0 = arg1 /\ s R_X1 = arg2 /\ s R_X2 = arg3
+      s R_X0 = arg1 /\ s R_X1 = arg2 /\ s R_X2 = arg3 /\
+  s R_X20 = x20 /\ s R_X21 = x21
       )
       
     (* loop invariant *)
     | 0x100020 => Inv 1 (∃ fb k,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      (s R_X19 = mem' fb Ⓠ[k] ) /\
+      (s R_X19 = mem' fb Ⓠ[k + arg2] ) /\
         s R_X20 = arg1 /\ s R_X21 = arg3
       )
 
     (* case-equal, non-null characters found (successful find)*)
     | 0x100034 => Inv 1 (∃ fb k,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      s R_X19 = mem' fb Ⓠ[k] /\ s R_X20 = arg1 /\ s R_X21 = arg3
+      s R_X19 = mem' fb Ⓠ[k + arg2] /\ s R_X20 = arg1 /\ s R_X21 = arg3
       )
       
     (* 0x100048: Just before the "not found" path completes; stack frame and saved registers intact. *)
     | 0x100048 => Inv 1 (∃ fb,
       s R_SP = sp ⊖ 48 /\
-      s V_MEM64 = mem' fb /\ (s R_X1 = 0 \/ s R_X19 = 0)
-    )
+      s V_MEM64 = mem' fb /\ (s R_X1 = 0 \/ s R_X19 = 0) 
+    /\
+  (
+    (* Case 1: Came from the loop (X20/X21 are set to arg1/arg3) *)
+    (s R_X20 = arg1 /\ s R_X21 = arg3)
+    ∨ 
+    (* Case 2: Came from the initial check (X20/X21 hold the arbitrary initial values) *)
+    (s R_X20 = x20 /\ s R_X21 = x21)
+  )
+)
 
   (* 0x10004c: After executing `mov x19,#0` (or arriving from cbz), x19 holds the final result value. *)
-  | 0x10004c => Inv 1 (∃ fb n,
+  | 0x10004c => Inv 1 (∃ n fb,
       s R_SP = sp ⊖ 48 /\
       s V_MEM64 = mem' fb /\
-      s R_X19 = n /\             (* result in x19 (or 0 if not found) *)
-      s R_X20 = arg1 /\
-      s R_X21 = arg3
+      s R_X19 = n /\
+  (s R_X20 = arg1 ∧ s R_X21 = arg3 ∨ s R_X20 = x20 ∧ s R_X21 = x21)
     )
 
   (* 0x100050: After `mov x0,x19`, the function result is now placed in x0 for return. *)
@@ -101,8 +110,8 @@ Section Invariants.
       s R_SP = sp ⊖ 48 /\
       s V_MEM64 = mem' fb /\
       s R_X0 = n /\ s R_X19 = n /\
-      s R_X20 = arg1 /\
-      s R_X21 = arg3
+  s R_X21 = arg3 /\ (* X21 IS RESTORED by LDR at 0x10004c *)
+  (s R_X20 = arg1 ∨ s R_X20 = x20)
     )
 
     (* tfind return site *)
@@ -321,16 +330,17 @@ Definition good_callee cmp (a:addr) := forall p inv xp s t,
 Ltac step := time arm8_step.
 
 Theorem tfind_partial_correctness:
-  forall s sp mem t s' x' arg1 arg2 arg3 a'
+  forall s sp mem t s' x' arg1 arg2 arg3 a' x20 x21
          (ENTRY: startof t (x',s') = (Addr 0x100000, s))
          (MDL: models arm8typctx s)
          (SP: s R_SP = sp) (MEM: s V_MEM64 = mem) (X30: s R_X30 = a')
          (RX0: s R_X0 = arg1) (RX1: s R_X1 = arg2) (RX2: s R_X2 = arg3)
+         (RX20: s R_X20 = x20) (* <--- NEW *)(RX21: s R_X21 = x21) (* <--- NEW *)
          (cmp: N -> N -> N -> N)
          (H: good_callee cmp arg3),
           satisfies_all tfind_lo_tfind_armv8 
-                           (invs1  sp mem arg1 arg2 arg3)
-                           (exits1 sp mem arg1 arg2 arg3) ((x',s')::t).
+                           (invs1  sp mem arg1 arg2 arg3 x20 x21)
+                           (exits1 sp mem arg1 arg2 arg3 x20 x21) ((x',s')::t).
 
 Proof.
   
@@ -344,7 +354,7 @@ Proof.
   intros.
   erewrite startof_prefix in ENTRY; try eassumption.
   eapply models_at_invariant; try eassumption. apply welltyped. intro MDL1.
-  set (x20 := s R_X20) in *. set (x21 := s R_X21) in *. clearbody x20 x21.
+  (* set (x20 := s R_X20) in *. set (x21 := s R_X21) in *. clearbody x20 x21. *)
   clear - PRE MDL1 H cmp. rename t1 into t. rename s1 into s. rename MDL1 into MDL.
   
   (* Break the proof into cases, one for each internal invariant-point. *)
@@ -356,17 +366,20 @@ Proof.
   step. step. step. step.
   generalize_frame mem as fb.
   exists fb. psimpl.
+  destruct X2.
+  destruct H1.
   repeat (split || assumption || reflexivity). (* solves by definition *)
   
   (* Address 100010: tfind Parameter Validation*)
   destruct PRE as (fb & SP & MEM & X0 & X1 & X2).
   step. 
     (* the root pointer is invalid / 0 *)
-    exists fb. repeat (reflexivity || assumption || split). left. apply N.eqb_eq, BC.
+    exists fb. destruct X2. destruct H1. repeat (reflexivity || assumption || split). left. apply N.eqb_eq, BC.
+    right. split. assumption. assumption.
     
     (* valid root pointer*)
-    step. step. step. exists fb, arg2. repeat (reflexivity || assumption || split).
-    
+    step. step. step. exists fb, 0. repeat (reflexivity || assumption || split).
+    destruct X2. assumption.
   
   (* Address 100020: tfind main Loop*)  
   destruct PRE as (fb & k & SP & MEM & X19 & X20 & X21).
@@ -374,23 +387,88 @@ Proof.
   
     (* invalid pointer at current node*)
   + exists fb. repeat (reflexivity || assumption || split). right. apply N.eqb_eq, BC.
+  left. split. assumption. assumption. 
   
     (* valid node main loop section with BLR call *)
   + step. step. step. apply H. intros. unfold callee_postcondition in H0.
   step. exists fb, k. repeat (destruct H2 || destruct H0 || destruct H1). repeat (split || assumption).
   
+ 
+  (* Address 100034 *)
+  (* +  destruct PRE as (fb_frame & k_frame & SP & MEM & X19 & X20 & X21).
+
+  step.
+    
+  (* goal 1 *)
+  - exists (s R_X19), k_frame, fb_frame.
+    repeat (split || assumption || reflexivity).
+  
+  (* goal 2 *)
+  - eapply NIStep.
+    vm_compute. reflexivity.
+    vm_compute. reflexivity.
+
+  
+  (* Address 10004c: Restore x21 from stack *)
+  + destruct PRE as (n_val & k_val & fb_frame & SP & MEM & X19 & X20 & X21).
+    step.
+    
+    (* Prove transition to 0x100050 *)
+    exists n_val, k_val, fb_frame.
+    repeat (split || assumption || reflexivity). *)
+
   (* Address 100034: case-equal, non-null characters found (successful find)*)
   + destruct PRE as (fb & k & SP & MEM & X19 & X20 & X21).
   step.
-  exists fb, (mem' sp mem fb Ⓠ[ k ]).
+  exists (mem' sp mem fb Ⓠ[ k + arg2 ]), fb.
   repeat (assumption || reflexivity || split).
+  left. split. assumption. assumption.
   step. step. step. step.
-  exists fb. eexists.
-  repeat (assumption || reflexivity || split).
+  exists fb, k.
+  repeat split.
+  assumption. 
+  (* destructed the if statement *)
+  destruct (s R_NG ?= s R_OV) eqn:Hcmp.
   
+  (* True case *)
+  rewrite N.compare_eq_iff in Hcmp. rewrite Hcmp. rewrite N.eqb_refl.
+  destruct (cset_branch_logic s) as [H1 | H2].
+    rewrite H1. rewrite N.shiftl_0_l. admit. admit. admit.
+
+
+  admit. (* Expression for child node calculation *)
+  assumption.
+  assumption.
   
   (* Address 100048: Just before the "not found" path completes; stack frame and saved registers intact. *)
   + destruct PRE as (fb & SP & MEM & zero).
-  step. exists fb, 0. repeat (assumption || reflexivity || split).
-      
+  step.
+  exists 0, fb.
+  repeat split.
+  assumption. assumption.
+  destruct zero.
+  assumption.
+  
+  (* 0x100050: After `mov x0,x19`, the function result is now placed in x0 for return. *)
+  + destruct PRE as (n & fb & MEM & X19 & X20 & X21).
+  step. exists n, fb.
+  repeat split.
+    admit. (* No mention of X0 in this invariant, and adding it creates 
+            memory references to X0 in earlier invariants, breaking current proof *)
+  assumption.
+    admit. (* Instead of x21 = arg3, we have some memory reference holding arg3 *)
+  destruct X21.
+  destruct H0.
+  left.
+  assumption.
+  destruct H0.
+  right.
+  assumption.
+  
+  (* 0x10005c: tfind return site *)
+  + destruct PRE as (n & fb & SP & MEM & X0 & X19 & X21 & X20).
+  step. step. step.
+  exists n, 0, fb.
+  repeat split.
+    admit. (* We lose reference to k, causing us to be unable to use it for the final null condition *)
 Qed.
