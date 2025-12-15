@@ -71,14 +71,14 @@ Section Invariants.
     (* loop invariant *)
     | 0x100020 => Inv 1 (∃ fb k,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      (s R_X19 = mem' fb Ⓠ[k + arg2] ) /\
+      (s R_X19 = mem' fb Ⓠ[k] ) /\
         s R_X20 = arg1 /\ s R_X21 = arg3
       )
 
     (* case-equal, non-null characters found (successful find)*)
     | 0x100034 => Inv 1 (∃ fb k,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
-      s R_X19 = mem' fb Ⓠ[k + arg2] /\ s R_X20 = arg1 /\ s R_X21 = arg3
+      s R_X19 = mem' fb Ⓠ[k] /\ s R_X20 = arg1 /\ s R_X21 = arg3
       )
       
     (* 0x100048: Just before the "not found" path completes; stack frame and saved registers intact. *)
@@ -88,7 +88,7 @@ Section Invariants.
     )
 
   (* 0x10004c: After executing `mov x19,#0` (or arriving from cbz), x19 holds the final result value. *)
-  | 0x10004c => Inv 1 (∃ n fb,
+  | 0x10004c => Inv 1 (∃ fb n,
       s R_SP = sp ⊖ 48 /\
       s V_MEM64 = mem' fb /\
       s R_X19 = n /\             (* result in x19 (or 0 if not found) *)
@@ -365,7 +365,7 @@ Proof.
     exists fb. repeat (reflexivity || assumption || split). left. apply N.eqb_eq, BC.
     
     (* valid root pointer*)
-    step. step. step. exists fb, 0. repeat (reflexivity || assumption || split).
+    step. step. step. exists fb, arg2. repeat (reflexivity || assumption || split).
     
   
   (* Address 100020: tfind main Loop*)  
@@ -406,12 +406,12 @@ Proof.
   (* Address 100034: case-equal, non-null characters found (successful find)*)
   + destruct PRE as (fb & k & SP & MEM & X19 & X20 & X21).
   step.
-  exists (mem' sp mem fb Ⓠ[ k + arg2 ]), fb.
+  exists fb, (mem' sp mem fb Ⓠ[ k ]).
   repeat (assumption || reflexivity || split).
   step. step. step. step.
-  exists fb, k.
+  exists fb.
   repeat split.
-  assumption. 
+  assumption.
   (* destructed the if statement *)
   destruct (s R_NG ?= s R_OV) eqn:Hcmp.
   
@@ -427,6 +427,6 @@ Proof.
   
   (* Address 100048: Just before the "not found" path completes; stack frame and saved registers intact. *)
   + destruct PRE as (fb & SP & MEM & zero).
-  step.
+  step. exists fb, 0. repeat (assumption || reflexivity || split).
       
 Qed.
