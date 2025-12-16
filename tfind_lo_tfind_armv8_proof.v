@@ -43,6 +43,14 @@ Proof.
   prove_noassign.
 Qed.
 
+(* tfind does not corrupt unused callee-saved registers (e.g., x22). *)
+Theorem tfind_preserves_x22:
+  forall_endstates tfind_lo_tfind_armv8 (fun _ s _ s' => s R_X22 = s' R_X22).
+Proof.
+  apply noassign_prog_same.
+  prove_noassign.
+Qed.
+
 Require Import Coq.Lists.List. 
 Require Import Coq.Bool.Bool.
 Import ListNotations.
