@@ -35,6 +35,14 @@ Proof.
   prove_noassign.
 Qed.
 
+(* tfind maintains the stack pointer (allocates and deallocates correctly). *)
+Theorem tfind_preserves_sp:
+  forall_endstates tfind_lo_tfind_armv8 (fun _ s _ s' => s R_SP = s' R_SP).
+Proof.
+  apply noassign_prog_same.
+  prove_noassign.
+Qed.
+
 Require Import Coq.Lists.List. 
 Require Import Coq.Bool.Bool.
 Import ListNotations.
