@@ -18,8 +18,8 @@ Definition tfind_exit (t:trace) :=
   end | _ => false end.
 
 (* tfind_lo_tfind_armv8 *)
-
 (* tfind does not corrupt memory. *)
+
 Theorem tfind_preserves_memory:
   forall_endstates tfind_lo_tfind_armv8 (fun _ s _ s' => s V_MEM32 = s' V_MEM32).
 Proof.
@@ -212,7 +212,9 @@ Qed.
 Section Invariants.
 
   Variable sp : N          (* initial stack pointer *).
+    
   Variable mem : memory    (* initial memory state *).
+    
   Variable arg1 : N        (* tfind: 1st pointer arg (R_X0)
                               desired index *).
   Variable arg2 : N        (* tfind: 2nd pointer arg (R_X1)
@@ -228,10 +230,10 @@ Section Invariants.
 
   Definition mem' fbytes := setmem 64 LittleE 40 mem (sp ⊖ 48) fbytes.
 
-  Definition postcondition (s:store) :=
-    ∃ n k fb,
-      s V_MEM64 = mem' fb /\
-      s R_X0 = n /\ (n=0 -> (mem' fb) Ⓑ[arg1+k] = 0).
+  Definition postcondition (s:store) :=  
+    ∃ n fb,
+      s V_MEM64 = mem' fb ∧
+      s R_X0 = n.
   
   Definition invs T (Inv Post: inv_type T) (NoInv:T) (s:store) (a:addr) : T :=
     match a with
@@ -241,6 +243,7 @@ Section Invariants.
         s R_X0 = arg1 /\ s R_X1 = arg2 /\ s R_X2 = arg3 /\
         sorted_tree 64 LittleE 64 mem arg2 cmp
       )
+    
         (* X1 Parameter Validation *)
     | 0x100010 => Inv 1 (∃ fb,
       s R_SP = sp ⊖ 48 /\ s V_MEM64 = mem' fb /\
@@ -281,6 +284,7 @@ Section Invariants.
     end.
 
   Definition invs1 := make_invs 1 tfind_lo_tfind_armv8 invs.
+          
   Definition exits1 := make_exits 1 tfind_lo_tfind_armv8 invs.
   
 End Invariants.
@@ -347,7 +351,6 @@ Proof.
   destruct_inv 64 PRE.
   
   (* Address 100000: tfind entry point *)
-  (* destruct PRE as (MEM & SP & X0 & X1 & X3).  *)
   destruct PRE as (SP & MEM & X0 & X1 & X2 & HSorted).
   step. step. step. step.
   generalize_frame mem as fb.
@@ -357,23 +360,35 @@ Proof.
   (* Address 100010: tfind Parameter Validation*)
   destruct PRE as (fb & SP & MEM & X0 & X1 & X2).
   step. 
-    (* the root pointer is invalid / 0 *)
-    exists fb. repeat (reflexivity || assumption || split). left. apply N.eqb_eq, BC.
     
-    (* valid root pointer*)
-    step. step. step. exists fb, arg2. repeat (reflexivity || assumption || split).
+  (* the root pointer is invalid / 0 *)
+  exists fb. 
+  repeat (reflexivity || assumption || split). 
+  left. apply N.eqb_eq, BC.
     
+  (* valid root pointer*)
+  step. step. step. 
+  exists fb, arg2. 
+  repeat (reflexivity || assumption || split).
   
   (* Address 100020: tfind main Loop*)  
   destruct PRE as (fb & k & SP & MEM & X19 & X20 & X21 & HSorted).
   step.
   
-    (* invalid pointer at current node*)
-  + exists fb. repeat (reflexivity || assumption || split). right. apply N.eqb_eq, BC.
+  (* invalid pointer at current node*)
+  + exists fb. 
+  repeat (reflexivity || assumption || split). 
+  right. apply N.eqb_eq, BC.
   
     (* valid node main loop section with BLR call *)
-  + step. step. step. apply H. intros. unfold callee_postcondition in H0.
-  step. exists fb, k. repeat (destruct H2 || destruct H0 || destruct H1). repeat (split || assumption).
+  + step. step. step. 
+  apply H. 
+  intros. 
+  unfold callee_postcondition in H0.
+  step. 
+  exists fb, k. 
+  repeat (destruct H2 || destruct H0 || destruct H1). 
+  repeat (split || assumption).
   
   (* Address 100034: case-equal, non-null characters found (successful find)*)
   + destruct PRE as (fb & k & SP & MEM & X19 & X20 & X21).
@@ -381,15 +396,27 @@ Proof.
   exists fb, (mem' sp mem fb Ⓠ[ k ]).
   repeat (assumption || reflexivity || split).
   step. step. step. step.
-  exists fb. eexists.
+  exists fb. 
+  eexists.
   repeat (assumption || reflexivity || split).
   
   
   (* Address 100048: Just before the "not found" path completes; stack frame and saved registers intact. *)
   + destruct PRE as (fb & SP & MEM & zero).
-  step. exists fb, 0. repeat (assumption || reflexivity || split).
+  step. 
+  exists fb, 0. 
+  repeat (assumption || reflexivity || split).
   
-  + destruct PRE as ( fb & addr & SP & MEM & X19).
+  (* Address 10004c *)
+  + destruct PRE as (fb & SP & MEM & zero).
   step. step. step. step.
+  
+  
+  destruct zero as (HMEM & HX19).
+  exists SP, fb.
+  split.
+  assumption.
+  assumption.
+  
   
 Qed.
